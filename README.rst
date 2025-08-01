@@ -9,15 +9,13 @@ Configuration
 
 The proxy uses a JSON configuration file (config.json) that contains:
 - Key for proxy authentication
-- List of allowed target domains with managed cookies
+- List of allowed target domains
 
 Example config.json:
 {
   "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
   "allowed_domains": {
-    "api.domain.com": {
-      "managed_cookies": ["datadome"]
-    }
+    "api.domain.com"
   }
 }
 
@@ -31,15 +29,16 @@ forwards to api.domain.com/some/path.
 Cookie Management
 =================
 
-The proxy automatically saves cookies for the managed cookies for the allowed domains,
+The proxy automatically stores all the cookies for the allowed domains,
 and reuses and updates them for subsequent requests. It also saves the cookies in the file system,
 so that they can be reused even if the proxy is restarted.
 
 The cookies are saved in the file system in the same directory as the proxy script,
-in files named domain.cookie_name.
+in files named cookies.domain.json.
 
-If necessary, an initial value for the cookies can be obtained by accessing the API with a normal browser,
-by inspecting the stored cookies or using the network tab of the developer tools to intercept the request.
+If necessary, an initial value for the cookies and their domains can be obtained by accessing the API with a normal browser,
+and then inspecting the stored cookies or using the network tab of the developer tools to intercept the request.
+These initial values can be manually filled in the cookies.domain.json file before the first request by the proxy.
 
 Nginx configuration
 ===================

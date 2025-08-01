@@ -2,8 +2,6 @@
   # generate a random key, for instance using "dd count=1000 if=/dev/urandom | sha1sum"
   "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
   "allowed_domains": {
-    "api.domain.com": {
-      "managed_cookies": ["datadome"]
-    }
+    "api.domain.com"
   }
 }

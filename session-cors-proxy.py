@@ -6,6 +6,7 @@ import requests
 import sys
 import os
 import json
+import re
 
 if len(sys.argv) < 1:
     print("Usage: gec-cors-proxy.py [port]")
@@ -34,42 +35,54 @@ config = load_config()
 KEY = config["key"]
 ALLOWED_DOMAINS = config["allowed_domains"]
 
-def get_managed_cookies(domain):
-    """Get the list of managed cookies for a domain"""
-    domain_config = ALLOWED_DOMAINS.get(domain, {})
-    return domain_config.get("managed_cookies", [])
+def parse_set_cookie_domain(set_cookie_header):
+    """Extract domain from Set-Cookie header, return None if not found"""
+    # Look for Domain= attribute in Set-Cookie header
+    domain_match = re.search(r'Domain=([^;]+)', set_cookie_header, re.IGNORECASE)
+    if domain_match:
+        domain = domain_match.group(1).strip()
+        return domain
+    return None  # Return None when no domain specified
 
-def get_cookie_filename(domain, cookie_name):
-    """Generate cookie filename for domain and cookie"""
-    return f"{domain}.{cookie_name}"
+def get_cookies_filename(domain):
+    """Generate cookies filename for domain"""
+    return f"cookies.{domain}.json"
 
-def save_cookie(domain, cookie_name, cookie_value):
-    """Save a cookie value to domain-specific file"""
-    filename = get_cookie_filename(domain, cookie_name)
+def save_cookies(domain, cookies):
+    """Save all cookies for a domain to single JSON file"""
+    filename = get_cookies_filename(domain)
     with open(filename, "w") as f:
-        f.write(cookie_value)
+        json.dump(cookies, f, indent=2)
 
-def load_cookie(domain, cookie_name):
-    """Load a cookie value from domain-specific file"""
-    filename = get_cookie_filename(domain, cookie_name)
+def load_cookies(domain):
+    """Load all cookies for a domain from JSON file"""
+    filename = get_cookies_filename(domain)
     if os.path.exists(filename):
         with open(filename, "r") as f:
-            return f.read().strip()
-    return None
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {}
+    return {}
 
 
 session = requests.Session()
 
 # Load initial cookies for all domains
-for domain, domain_config in ALLOWED_DOMAINS.items():
-    managed_cookies = domain_config.get("managed_cookies", [])
-    for cookie_name in managed_cookies:
-        cookie_value = load_cookie(domain, cookie_name)
+for domain in ALLOWED_DOMAINS:
+    cookies = load_cookies(domain)
+    for cookie_name, cookie_data in cookies.items():
+        cookie_value = cookie_data.get("value")
+        cookie_domain = cookie_data.get("domain")
         if cookie_value:
-            session.cookies.set(cookie_name, cookie_value, domain=f".{domain}")
-            print(f"[INFO] Loaded {cookie_name} cookie for {domain}")
-        else:
-            print(f"[WARN] No {cookie_name} cookie found for {domain} (file: {get_cookie_filename(domain, cookie_name)})")
+            session.cookies.set(cookie_name, cookie_value, domain=cookie_domain)
+            domain_info = f"domain: {cookie_domain}" if cookie_domain else "host-only"
+            print(f"[INFO] {domain}: loaded {cookie_name} ({domain_info})")
+    
+    if not cookies:
+        print(f"[INFO] {domain}: no cookies file found")
+    else:
+        print(f"[INFO] {domain}: loaded {len(cookies)} cookies")
 
 class CORSProxyHandler(BaseHTTPRequestHandler):
 
@@ -152,14 +165,18 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Headers', '*')
             self.end_headers()
             self.wfile.write(resp.content)
-            
-            # Save managed cookies for this domain
-            managed_cookies = get_managed_cookies(target_domain)
-            for cookie_name in managed_cookies:
-                cookie_value = session.cookies.get(cookie_name, domain=f".{target_domain}")
-                if cookie_value:
-                    save_cookie(target_domain, cookie_name, cookie_value)
-                    print(f"[INFO] Saved {cookie_name} cookie for {target_domain}: {cookie_value}")
+
+            # Parse and save cookies from the response
+            all_cookies = {}
+            if resp.cookies:
+                for cookie in resp.cookies:
+                    all_cookies[cookie.name] = {
+                        "value": cookie.value,
+                        "domain": cookie.domain or None
+                    }
+                    print(f"[INFO] {target_domain}: saving cookie {cookie.name} for domain {cookie.domain}")
+            save_cookies(target_domain, all_cookies)
+            print(f"[INFO] {target_domain}: saved {len(all_cookies)} cookies to file")
 
         except Exception as e:
             self.send_error(502, f"Proxy error: {e}")
