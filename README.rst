@@ -11,6 +11,7 @@ The proxy uses a JSON configuration file (config.json) that contains:
 - Key for proxy authentication
 - List of allowed target domains
 - Port number for the proxy server (defaults to 8080 if not specified)
+- bind_localhost_only: if true, binds only to 127.0.0.1 instead of all interfaces (defaults to false)
 
 Example config.json:
 {
@@ -18,7 +19,8 @@ Example config.json:
   "allowed_domains": [
     "api.domain.com"
   ],
-  "port": 8080
+  "port": 8080,
+  "bind_localhost_only": false
 }
 
 Usage
@@ -51,9 +53,18 @@ These initial values can be manually filled in the cookies.domain.json file befo
 Nginx configuration
 ===================
 
-If you are running the proxy on the same server than a website,
-and want to use the proxy on a standard port or benefit from an existing https configuration,
-you can use the following nginx configuration :
+If you are running the proxy on the same server than a website, configuring nginx as a reverse proxy has
+multiple benefits:
+
+  * it allows to use the proxy on a standard port (80 or 443) that isn't blocked by external firewalls
+  * it allows a more explicit and simple usage with a URL prefix instead of a port number
+    (https://yourdomain.com/proxy/api.domain.com/some/path?key=your-key instead of http://yourdomain.com:8080/api.domain.com/some/path?key=your-key)
+  * it allows to use the proxy with https, and benefit from an existing https configuration
+  * it allows to benefit from the server's logging and monitoring (eg fail2ban)
+  * hiding the proxy behind a standard URL prefix makes it more difficult to guess than an open port,
+    reducing the risk of abuse from bots and scanners (for this to work, you need to set "bind_localhost_only": true in your config.json)
+
+You simply have use the following nginx configuration (inside the server block) :
 
 location /proxy/ {
         proxy_pass http://127.0.0.1:8080/;
@@ -61,5 +72,3 @@ location /proxy/ {
     }
 
 (Replace 8080 with your configured port if different)
-
-and use it with https://yourdomain.com/proxy/api.domain.com/some/path?key=your-key

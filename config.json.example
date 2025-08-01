@@ -4,5 +4,6 @@
   "allowed_domains": [
     "api.domain.com"
   ],
-  "port": 8080
+  "port": 8080,
+  "bind_localhost_only": false
 }

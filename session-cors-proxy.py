@@ -33,6 +33,7 @@ config = load_config()
 KEY = config["key"]
 ALLOWED_DOMAINS = config["allowed_domains"]
 listen_port = config.get("port", 8080)
+bind_localhost_only = config.get("bind_localhost_only", False)
 
 def parse_set_cookie_domain(set_cookie_header):
     """Extract domain from Set-Cookie header, return None if not found"""
@@ -188,6 +189,13 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 if __name__ == '__main__':
-    print(f"Proxy listening on port {listen_port}")
-    httpd = ThreadingHTTPServer(('', listen_port), CORSProxyHandler)
+    # Determine bind address based on configuration
+    if bind_localhost_only:
+        server_host = '127.0.0.1'
+        print(f"Proxy listening on 127.0.0.1:{listen_port} (localhost only)")
+    else:
+        server_host = ''
+        print(f"Proxy listening on all interfaces port {listen_port}")
+    
+    httpd = ThreadingHTTPServer((server_host, listen_port), CORSProxyHandler)
     httpd.serve_forever()
