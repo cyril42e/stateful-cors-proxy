@@ -9,10 +9,8 @@ import json
 import re
 
 if len(sys.argv) < 1:
-    print("Usage: gec-cors-proxy.py [port]")
+    print("Usage: session-cors-proxy.py")
     sys.exit(1)
-
-listen_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 
 def load_config(config_file="config.json"):
     """Load configuration from JSON file"""
@@ -34,6 +32,7 @@ def is_domain_allowed(target_domain, allowed_domains):
 config = load_config()
 KEY = config["key"]
 ALLOWED_DOMAINS = config["allowed_domains"]
+listen_port = config.get("port", 8080)
 
 def parse_set_cookie_domain(set_cookie_header):
     """Extract domain from Set-Cookie header, return None if not found"""

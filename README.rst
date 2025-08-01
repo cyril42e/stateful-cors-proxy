@@ -10,21 +10,29 @@ Configuration
 The proxy uses a JSON configuration file (config.json) that contains:
 - Key for proxy authentication
 - List of allowed target domains
+- Port number for the proxy server (defaults to 8080 if not specified)
 
 Example config.json:
 {
   "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
-  "allowed_domains": {
+  "allowed_domains": [
     "api.domain.com"
-  }
+  ],
+  "port": 8080
 }
 
 Usage
 =====
 
+Start the proxy by running:
+
+    python3 session-cors-proxy.py
+
 The proxy can be used with a path-based syntax:
 http://localhost:8080/api.domain.com/some/path?key=your-key
 forwards to api.domain.com/some/path.
+
+(Replace 8080 with your configured port if different)
 
 Cookie Management
 =================
@@ -51,5 +59,7 @@ location /proxy/ {
         proxy_pass http://127.0.0.1:8080/;
         proxy_set_header Host $host;
     }
+
+(Replace 8080 with your configured port if different)
 
 and use it with https://yourdomain.com/proxy/api.domain.com/some/path?key=your-key
