@@ -182,18 +182,20 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             if 'If-Modified-Since' in self.headers:
                 headers['If-Modified-Since'] = self.headers['If-Modified-Since']
 
-            resp = session.get(url, headers=headers)
+            resp = session.get(url, headers=headers, stream=True)
 
             self.send_response(resp.status_code)
 
             # Relay headers except those that can break the response
             for key, value in resp.headers.items():
-                if key.lower() in ['content-encoding', 'transfer-encoding', 'content-length', 'connection', 'set-cookie']:
+                if key.lower() in ['transfer-encoding', 'connection', 'set-cookie']:
                     continue
                 self.send_header(key, value)
             self.set_cors_headers()
             self.end_headers()
-            self.wfile.write(resp.content)
+            
+            # Send raw compressed content as you requested
+            self.wfile.write(resp.raw.read())
 
             # Parse and save cookies from the response
             all_cookies = {}
