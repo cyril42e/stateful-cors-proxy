@@ -28,10 +28,19 @@ def is_domain_allowed(target_domain, allowed_domains):
     """Check if the target domain is in the allowed domains list"""
     return target_domain in allowed_domains
 
+def is_origin_allowed(origin, allowed_origins):
+    """Check if the origin is in the allowed origins list"""
+    if not origin:
+        return True  # Allow requests without Origin header (e.g., same-origin or direct navigation)
+    if "*" in allowed_origins:
+        return True
+    return origin in allowed_origins
+
 # Load configuration
 config = load_config()
 KEY = config["key"]
 ALLOWED_DOMAINS = config["allowed_domains"]
+ALLOWED_ORIGINS = config.get("allowed_origins", ["*"])
 listen_port = config.get("port", 8080)
 bind_localhost_only = config.get("bind_localhost_only", False)
 
@@ -86,6 +95,20 @@ for domain in ALLOWED_DOMAINS:
 
 class CORSProxyHandler(BaseHTTPRequestHandler):
 
+    def set_cors_headers(self):
+        """Set appropriate CORS headers - origin is already validated at this point"""
+        origin = self.headers.get('Origin')
+        
+        if origin:
+            # Origin is present and already validated as allowed
+            self.send_header('Access-Control-Allow-Origin', origin)
+        else:
+            # No origin header (same-origin request) - always allow
+            self.send_header('Access-Control-Allow-Origin', '*')
+        
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', '*')
+
     def do_GET(self):
         parsed_url = urlparse(self.path)
         params = parse_qs(parsed_url.query)
@@ -96,6 +119,14 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             self.send_response(403)
             self.end_headers()
             self.wfile.write(b"Forbidden: Invalid key")
+            return
+
+        # Check if the origin is allowed
+        origin = self.headers.get('Origin')
+        if not is_origin_allowed(origin, ALLOWED_ORIGINS):
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(f"Forbidden: Origin '{origin}' not allowed".encode())
             return
 
         try:
@@ -160,9 +191,7 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
                 if key.lower() in ['content-encoding', 'transfer-encoding', 'content-length', 'connection', 'set-cookie']:
                     continue
                 self.send_header(key, value)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', '*')
+            self.set_cors_headers()
             self.end_headers()
             self.wfile.write(resp.content)
 
@@ -182,10 +211,16 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             self.send_error(502, f"Proxy error: {e}")
 
     def do_OPTIONS(self):
+        # Check if the origin is allowed for preflight requests
+        origin = self.headers.get('Origin')
+        if not is_origin_allowed(origin, ALLOWED_ORIGINS):
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(f"Forbidden: Origin '{origin}' not allowed".encode())
+            return
+
         self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', '*')
+        self.set_cors_headers()
         self.end_headers()
 
 if __name__ == '__main__':

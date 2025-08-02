@@ -10,6 +10,7 @@ Configuration
 The proxy uses a JSON configuration file (config.json) that contains:
 - Key for proxy authentication
 - List of allowed target domains
+- List of allowed origins for CORS (defaults to ["*"] if not specified)
 - Port number for the proxy server (defaults to 8080 if not specified)
 - bind_localhost_only: if true, binds only to 127.0.0.1 instead of all interfaces (defaults to false)
 
@@ -18,6 +19,9 @@ Example config.json:
   "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
   "allowed_domains": [
     "api.domain.com"
+  ],
+  "allowed_origins": [
+    "https://yourdomain.com"
   ],
   "port": 8080,
   "bind_localhost_only": false
@@ -49,6 +53,18 @@ in files named cookies.domain.json.
 If necessary, an initial value for the cookies and their domains can be obtained by accessing the API with a normal browser,
 and then inspecting the stored cookies or using the network tab of the developer tools to intercept the request.
 These initial values can be manually filled in the cookies.domain.json file before the first request by the proxy.
+
+Origin Control
+==============
+
+The proxy supports origin-based access control through the "allowed_origins" configuration.
+This controls which origins are allowed to make CORS requests to the proxy:
+
+- Set to ["*"] to allow all origins (default behavior if not specified)
+- Set to specific origins like ["https://yourdomain.com", "http://localhost:3000"] to restrict access
+- Set to empty to allow only same-origin requests (no Origin header)
+- Requests without an Origin header (same-origin requests or direct navigation) are always allowed
+- CORS preflight requests (OPTIONS) are also subject to origin validation
 
 Nginx configuration
 ===================

@@ -4,6 +4,9 @@
   "allowed_domains": [
     "api.domain.com"
   ],
+  "allowed_origins": [
+    "https://yourdomain.com"
+  ],
   "port": 8080,
   "bind_localhost_only": false
 }
