@@ -13,6 +13,7 @@ The proxy uses a JSON configuration file (config.json) that contains:
 - List of allowed origins for CORS (defaults to ["*"] if not specified)
 - Port number for the proxy server (defaults to 8080 if not specified)
 - bind_localhost_only: if true, binds only to 127.0.0.1 instead of all interfaces (defaults to false)
+- headers: a dictionary of headers to be added to all requests (defaults to empty)
 
 Example config.json:
 {

@@ -32,6 +32,23 @@ def is_origin_allowed(origin, allowed_origins):
     """Check if the origin is in the allowed origins list"""
     return not origin or "*" in allowed_origins or origin in allowed_origins
 
+def build_headers_for_domain(target_domain):
+    """Build headers for a specific domain, combining common headers with domain-specific overloads"""
+    headers = {}
+    
+    # Start with common headers
+    common_headers = HEADERS_CONFIG.get("common", {})
+    headers.update(common_headers)
+    
+    # Add domain-specific overloads
+    overload_headers = HEADERS_CONFIG.get("overload", {}).get(target_domain, {})
+    headers.update(overload_headers)
+    
+    # Always set the Host header to the target domain
+    headers['Host'] = target_domain
+    
+    return headers
+
 # Load configuration
 config = load_config()
 KEY = config["key"]
@@ -39,6 +56,7 @@ ALLOWED_DOMAINS = config["allowed_domains"]
 ALLOWED_ORIGINS = config.get("allowed_origins", ["*"])
 listen_port = config.get("port", 8080)
 bind_localhost_only = config.get("bind_localhost_only", False)
+HEADERS_CONFIG = config.get("headers", {"common": {}, "overload": {}})
 
 def parse_set_cookie_domain(set_cookie_header):
     """Extract domain from Set-Cookie header, return None if not found"""
@@ -162,19 +180,10 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             
             url = f"https://{target_domain}/{remaining_path}{query_string}"
 
-            headers = {
-                'Host': target_domain,
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br, zstd',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Connection': 'keep-alive',
-            }
+            # Build headers from configuration
+            headers = build_headers_for_domain(target_domain)
+            
+            # Add conditional headers from the request
             if 'If-Modified-Since' in self.headers:
                 headers['If-Modified-Since'] = self.headers['If-Modified-Since']
 
