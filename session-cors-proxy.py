@@ -7,6 +7,7 @@ import sys
 import os
 import json
 import re
+import threading
 
 if len(sys.argv) < 1:
     print("Usage: session-cors-proxy.py")
@@ -90,6 +91,12 @@ def load_cookies(domain):
                 return {}
     return {}
 
+# Create locks for sequential domains
+domain_locks = {}
+for domain, domain_config in ALLOWED_DOMAINS.items():
+    if domain_config.get('sequential', False):
+        domain_locks[domain] = threading.Lock()
+        print(f"[INFO] {domain}: configured for sequential processing")
 
 session = requests.Session()
 
@@ -181,39 +188,48 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             
             url = f"https://{target_domain}/{remaining_path}{query_string}"
 
-            # Build headers from configuration
-            headers = build_headers_for_domain(target_domain)
-            
-            # Add conditional headers from the request
-            if 'If-Modified-Since' in self.headers:
-                headers['If-Modified-Since'] = self.headers['If-Modified-Since']
+            # Check if this domain requires sequential processing
+            def make_request():
+                # Build headers from configuration
+                headers = build_headers_for_domain(target_domain)
+                
+                # Add conditional headers from the request
+                if 'If-Modified-Since' in self.headers:
+                    headers['If-Modified-Since'] = self.headers['If-Modified-Since']
 
-            resp = session.get(url, headers=headers, stream=True)
+                resp = session.get(url, headers=headers, stream=True)
 
-            self.send_response(resp.status_code)
+                self.send_response(resp.status_code)
 
-            # Relay headers except those that can break the response
-            for key, value in resp.headers.items():
-                if key.lower() in ['transfer-encoding', 'connection', 'set-cookie']:
-                    continue
-                self.send_header(key, value)
-            self.set_cors_headers()
-            self.end_headers()
-            
-            # Send raw compressed content as you requested
-            self.wfile.write(resp.raw.read())
+                # Relay headers except those that can break the response
+                for key, value in resp.headers.items():
+                    if key.lower() in ['transfer-encoding', 'connection', 'set-cookie']:
+                        continue
+                    self.send_header(key, value)
+                self.set_cors_headers()
+                self.end_headers()
+                
+                # Send raw compressed content as you requested
+                self.wfile.write(resp.raw.read())
 
-            # Parse and save cookies from the response
-            all_cookies = {}
-            if resp.cookies:
-                for cookie in resp.cookies:
-                    all_cookies[cookie.name] = {
-                        "value": cookie.value,
-                        "domain": cookie.domain or None
-                    }
-                    print(f"[INFO] {target_domain}: saving cookie {cookie.name} for domain {cookie.domain}")
-            save_cookies(target_domain, all_cookies)
-            print(f"[INFO] {target_domain}: saved {len(all_cookies)} cookies to file")
+                # Parse and save cookies from the response
+                all_cookies = {}
+                if resp.cookies:
+                    for cookie in resp.cookies:
+                        all_cookies[cookie.name] = {
+                            "value": cookie.value,
+                            "domain": cookie.domain or None
+                        }
+                        print(f"[INFO] {target_domain}: saving cookie {cookie.name} for domain {cookie.domain}")
+                save_cookies(target_domain, all_cookies)
+                print(f"[INFO] {target_domain}: saved {len(all_cookies)} cookies to file")
+
+            # Execute request with or without lock based on domain configuration
+            if target_domain in domain_locks:
+                with domain_locks[target_domain]:
+                    make_request()
+            else:
+                make_request()
 
         except Exception as e:
             self.send_error(502, f"Proxy error: {e}")

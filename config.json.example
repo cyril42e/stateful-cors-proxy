@@ -3,6 +3,7 @@
   "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
   "allowed_domains": {
     "api.domain.com": {
+      "sequential": false,
       "headers_override": {
         "Accept": "application/json",
         "Referrer": "https://site.com"

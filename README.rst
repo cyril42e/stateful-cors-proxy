@@ -19,6 +19,7 @@ Domain Configuration
 ====================
 
 Each domain in "allowed_domains" can have the following configuration:
+- sequential: if true, requests to this domain will be processed sequentially (useful for cookie rotation)
 - headers_override: domain-specific headers that override the global headers
 
 Example config.json:
@@ -68,6 +69,20 @@ in files named cookies.domain.json.
 If necessary, an initial value for the cookies and their domains can be obtained by accessing the API with a normal browser,
 and then inspecting the stored cookies or using the network tab of the developer tools to intercept the request.
 These initial values can be manually filled in the cookies.domain.json file before the first request by the proxy.
+
+Sequential Processing
+====================
+
+For domains that require careful cookie management (such as rotating authentication tokens), 
+you can enable sequential processing by setting "sequential": true in the domain configuration.
+
+When sequential processing is enabled:
+- All requests to that domain are processed one at a time using a per-domain lock
+- This ensures cookie updates happen in the correct order 
+- Prevents race conditions when multiple concurrent requests would interfere with stateful authentication
+- Other domains without sequential processing continue to use concurrent threading
+
+Note: Sequential processing will reduce throughput for the affected domain, so only enable it when necessary.
 
 Origin Control
 ==============
