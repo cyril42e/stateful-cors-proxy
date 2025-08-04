@@ -30,11 +30,7 @@ def is_domain_allowed(target_domain, allowed_domains):
 
 def is_origin_allowed(origin, allowed_origins):
     """Check if the origin is in the allowed origins list"""
-    if not origin:
-        return True  # Allow requests without Origin header (e.g., same-origin or direct navigation)
-    if "*" in allowed_origins:
-        return True
-    return origin in allowed_origins
+    return not origin or "*" in allowed_origins or origin in allowed_origins
 
 # Load configuration
 config = load_config()
