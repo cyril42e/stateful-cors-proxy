@@ -9,23 +9,37 @@ Configuration
 
 The proxy uses a JSON configuration file (config.json) that contains:
 - Key for proxy authentication
-- List of allowed target domains
+- Object of allowed target domains with their specific configurations
 - List of allowed origins for CORS (defaults to ["*"] if not specified)
 - Port number for the proxy server (defaults to 8080 if not specified)
 - bind_localhost_only: if true, binds only to 127.0.0.1 instead of all interfaces (defaults to false)
 - headers: a dictionary of headers to be added to all requests (defaults to empty)
 
+Domain Configuration
+====================
+
+Each domain in "allowed_domains" can have the following configuration:
+- headers_override: domain-specific headers that override the global headers
+
 Example config.json:
 {
   "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
-  "allowed_domains": [
-    "api.domain.com"
-  ],
+  "allowed_domains": {
+    "api.domain.com": {
+      "sequential": false,
+      "headers_override": {
+        "Accept": "application/json"
+      }
+    }
+  },
   "allowed_origins": [
     "https://yourdomain.com"
   ],
   "port": 8080,
-  "bind_localhost_only": false
+  "bind_localhost_only": false,
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0"
+  }
 }
 
 Usage

@@ -33,16 +33,18 @@ def is_origin_allowed(origin, allowed_origins):
     return not origin or "*" in allowed_origins or origin in allowed_origins
 
 def build_headers_for_domain(target_domain):
-    """Build headers for a specific domain, combining common headers with domain-specific overloads"""
+    """Build headers for a specific domain, combining common headers with domain-specific overrides"""
     headers = {}
     
     # Start with common headers
-    common_headers = HEADERS_CONFIG.get("common", {})
+    common_headers = HEADERS_CONFIG
     headers.update(common_headers)
     
-    # Add domain-specific overloads
-    overload_headers = HEADERS_CONFIG.get("overload", {}).get(target_domain, {})
-    headers.update(overload_headers)
+    # Add domain-specific overrides from allowed_domains
+    domain_config = ALLOWED_DOMAINS[target_domain]
+    if "headers_override" in domain_config:
+        override_headers = domain_config["headers_override"]
+        headers.update(override_headers)
     
     # Always set the Host header to the target domain
     headers['Host'] = target_domain
@@ -56,7 +58,7 @@ ALLOWED_DOMAINS = config["allowed_domains"]
 ALLOWED_ORIGINS = config.get("allowed_origins", ["*"])
 listen_port = config.get("port", 8080)
 bind_localhost_only = config.get("bind_localhost_only", False)
-HEADERS_CONFIG = config.get("headers", {"common": {}, "overload": {}})
+HEADERS_CONFIG = config.get("headers", {})
 
 def parse_set_cookie_domain(set_cookie_header):
     """Extract domain from Set-Cookie header, return None if not found"""
@@ -128,7 +130,6 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed_url.query)
         key = params.get("key", [""])[0]
         
-        #key = self.headers.get('X-Proxy-Token')
         if key != KEY:
             self.send_response(403)
             self.end_headers()
