@@ -8,6 +8,8 @@ import os
 import json
 import re
 import threading
+import time
+from collections import deque
 
 if len(sys.argv) < 1:
     print("Usage: session-cors-proxy.py")
@@ -52,6 +54,61 @@ def build_headers_for_domain(target_domain):
     
     return headers
 
+def get_rate_limits_for_domain(target_domain):
+    """Get rate limits for a specific domain, combining global limits with domain-specific overrides"""
+    # Start with global rate limits
+    rate_limits = RATE_LIMIT_CONFIG.copy()
+
+    # Add domain-specific overrides if specified
+    domain_config = ALLOWED_DOMAINS[target_domain]
+    if "rate_limit_override" in domain_config:
+        rate_limits = domain_config["rate_limit_override"]
+    
+    return rate_limits
+
+class RateLimiter:
+    """Simple rate limiter for multiple rate limits per client IP"""
+    
+    def __init__(self):
+        self.client_requests = {}
+        self.lock = threading.Lock()
+    
+    def is_allowed(self, client_ip, rate_limits):
+        """Check if request from client_ip is allowed. Always counts the request.
+        Use provided rate limit rules (list of [count, time_window_seconds] pairs)
+        e.g., [[5, 60], [50, 3600]] = max 5 requests per 60s AND max 50 per hour
+        """
+        
+        current_time = time.time()
+        
+        with self.lock:
+            # Initialize client tracking if needed
+            if client_ip not in self.client_requests:
+                self.client_requests[client_ip] = {}
+            
+            # Check each rate limit rule
+            for count, time_window in rate_limits:
+                # Initialize deque for this time window if needed
+                if time_window not in self.client_requests[client_ip]:
+                    self.client_requests[client_ip][time_window] = deque()
+                
+                # Get deque
+                requests_deque = self.client_requests[client_ip][time_window]
+                
+                # Remove old requests from front of deque
+                cutoff = current_time - time_window
+                while requests_deque and requests_deque[0] <= cutoff:
+                    requests_deque.popleft()
+                
+                # Add current request to back
+                requests_deque.append(current_time)
+                
+                # Check if we exceeded the limit
+                if len(requests_deque) > count:
+                    return False
+            
+            return True
+
 # Load configuration
 config = load_config()
 KEY = config["key"]
@@ -60,6 +117,8 @@ ALLOWED_ORIGINS = config.get("allowed_origins", ["*"])
 listen_port = config.get("port", 8080)
 bind_localhost_only = config.get("bind_localhost_only", False)
 HEADERS_CONFIG = config.get("headers", {})
+RATE_LIMIT_CONFIG = config.get("rate_limit", [])
+
 
 def parse_set_cookie_domain(set_cookie_header):
     """Extract domain from Set-Cookie header, return None if not found"""
@@ -117,7 +176,9 @@ for domain in ALLOWED_DOMAINS:
         print(f"[INFO] {domain}: loaded {len(cookies)} cookies")
 
 class CORSProxyHandler(BaseHTTPRequestHandler):
-
+    # Class variable for rate limiting (shared across all handler instances)
+    rate_limiter = RateLimiter()
+    
     def set_cors_headers(self):
         """Set appropriate CORS headers - origin is already validated at this point"""
         origin = self.headers.get('Origin')
@@ -131,6 +192,56 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
         
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', '*')
+
+    def extract_target_domain(self):
+        """Extract target domain from request path. Returns (domain, remaining_path) or (None, None) if invalid."""
+        try:
+            # Parse path to extract domain - Expected format: /domain.com/path/to/resource
+            path_parts = self.path.lstrip('/').split('/', 1)
+            
+            # Validate path structure
+            if len(path_parts) < 1 or not path_parts[0]:
+                raise ValueError("Domain required in path")
+            
+            # Extract domain from first path segment, removing query parameters
+            target_domain = path_parts[0].split('?')[0]
+            
+            # Extract remaining path
+            remaining_path = path_parts[1] if len(path_parts) > 1 else ""
+            
+            # Validate that the target domain is allowed
+            if not is_domain_allowed(target_domain, ALLOWED_DOMAINS):
+                self.send_response(403)
+                self.end_headers()
+                self.wfile.write(f"Forbidden: Domain '{target_domain}' not allowed".encode())
+                return None, None
+            
+            return target_domain, remaining_path
+            
+        except Exception:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"Bad Request: Invalid domain in path")
+            return None, None
+
+    def check_rate_limit(self, target_domain):
+        """Check rate limit for this client IP + domain combination."""
+        client_ip = self.client_address[0]
+        
+        # Get rate limits for this domain (with override support)
+        rate_limits = get_rate_limits_for_domain(target_domain)
+        
+        # Create unique identifier for this IP-domain pair
+        ip_domain_key = f"{client_ip}:{target_domain}"
+        
+        # Check rate limit using dynamic rate limits for this specific domain
+        if self.rate_limiter.is_allowed(ip_domain_key, rate_limits):
+            return True
+        
+        self.send_response(429)
+        self.end_headers()
+        self.wfile.write(f"Too Many Requests: Rate limit exceeded for {client_ip} on {target_domain}".encode())
+        return False
 
     def do_GET(self):
         parsed_url = urlparse(self.path)
@@ -151,30 +262,16 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             self.wfile.write(f"Forbidden: Origin '{origin}' not allowed".encode())
             return
 
+        # Extract and validate target domain
+        target_domain, remaining_path = self.extract_target_domain()
+        if target_domain is None:
+            return  # Error response already sent
+        
+        # Rate limiting check
+        if not self.check_rate_limit(target_domain):
+            return
+
         try:
-            # Parse path to extract domain and remaining path
-            # Expected format: /domain.com/path/to/resource
-            path_parts = self.path.lstrip('/').split('/', 1)
-            
-            if len(path_parts) < 1 or not path_parts[0]:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(b"Bad Request: Domain required in path")
-                return
-            
-            # Extract domain from first path segment, removing query parameters
-            domain_part = path_parts[0].split('?')[0]
-            target_domain = domain_part
-            
-            # Validate that the target domain is allowed
-            if not is_domain_allowed(target_domain, ALLOWED_DOMAINS):
-                self.send_response(403)
-                self.end_headers()
-                self.wfile.write(f"Forbidden: Domain '{target_domain}' not allowed".encode())
-                return
-            
-            # Build the target URL
-            remaining_path = path_parts[1] if len(path_parts) > 1 else ""
             # Preserve query parameters (excluding our key parameter)
             query_params = []
             for param, values in params.items():
@@ -241,6 +338,15 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
             self.send_response(403)
             self.end_headers()
             self.wfile.write(f"Forbidden: Origin '{origin}' not allowed".encode())
+            return
+
+        # Extract and validate target domain
+        target_domain, _ = self.extract_target_domain()
+        if target_domain is None:
+            return  # Error response already sent
+        
+        # Rate limiting check
+        if not self.check_rate_limit(target_domain):
             return
 
         self.send_response(204)

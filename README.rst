@@ -1,5 +1,6 @@
-CORS Proxy
-==========
+===================
+Stateful CORS Proxy
+===================
 
 A Python CORS proxy with session-persistent cookies, allowing access to APIs that require
 ongoing authentication or stateful browsing.
@@ -14,13 +15,12 @@ The proxy uses a JSON configuration file (config.json) that contains:
 - Port number for the proxy server (defaults to 8080 if not specified)
 - bind_localhost_only: if true, binds only to 127.0.0.1 instead of all interfaces (defaults to false)
 - headers: a dictionary of headers to be added to all requests (defaults to empty)
+- rate_limit: global rate limits applied per client IP per domain (defaults to no limits)
 
-Domain Configuration
-====================
-
-Each domain in "allowed_domains" can have the following configuration:
+In addition, each domain in "allowed_domains" can have the following configuration:
 - sequential: if true, requests to this domain will be processed sequentially (useful for cookie rotation)
 - headers_override: domain-specific headers that override the global headers
+- rate_limit_override: domain-specific rate limits that override the global rate limits
 
 Example config.json:
 {
@@ -30,7 +30,11 @@ Example config.json:
       "sequential": false,
       "headers_override": {
         "Accept": "application/json"
-      }
+      },
+      "rate_limit_override": [
+        [5, 60],
+        [50, 3600]
+      ]
     }
   },
   "allowed_origins": [
@@ -40,7 +44,11 @@ Example config.json:
   "bind_localhost_only": false,
   "headers": {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0"
-  }
+  },
+  "rate_limit": [
+    [10, 60],
+    [100, 3600]
+  ]
 }
 
 Usage
@@ -48,7 +56,7 @@ Usage
 
 Start the proxy by running:
 
-    python3 session-cors-proxy.py
+    python3 stateful-cors-proxy.py
 
 The proxy can be used with a path-based syntax:
 http://localhost:8080/api.domain.com/some/path?key=your-key
@@ -95,6 +103,29 @@ This controls which origins are allowed to make CORS requests to the proxy:
 - Set to empty to allow only same-origin requests (no Origin header)
 - Requests without an Origin header (same-origin requests or direct navigation) are always allowed
 - CORS preflight requests (OPTIONS) are also subject to origin validation
+
+Rate Limiting
+=============
+
+The proxy supports per-IP per-domain rate limiting to prevent abuse and protect target APIs.
+Rate limits are defined as a list of [count, time_window_seconds] pairs.
+
+Global Rate Limiting:
+- Set in the "rate_limit" configuration
+- Applied to each client IP for each domain independently
+- Example: [[5, 60], [50, 3600]] means max 5 requests per minute AND max 50 requests per hour
+
+Domain-Specific Rate Limiting:
+- Set in "rate_limit_override" for individual domains
+- Overrides the global rate limits for that specific domain
+- Allows different limits for different APIs
+
+How it works:
+- Each client IP gets independent rate limits for each domain
+- A client can make 5 req/min to domain-a.com AND 5 req/min to domain-b.com
+- If two clients both access domain-a.com, they each get their own 5 req/min budget
+- Uses sliding window algorithm for accurate rate limiting
+- Returns HTTP 429 "Too Many Requests" when limits are exceeded
 
 Nginx configuration
 ===================

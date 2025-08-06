@@ -7,7 +7,11 @@
       "headers_override": {
         "Accept": "application/json",
         "Referrer": "https://site.com"
-      }
+      },
+      "rate_limit_override": [
+        [5, 60],
+        [50, 3600]
+      ]
     }
   },
   "allowed_origins": [
@@ -26,5 +30,11 @@
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
     "Connection": "keep-alive"
-  }
+  },
+  # Global rate limits applied per client IP per domain
+  # Each IP can make this many requests to each domain independently
+  "rate_limit": [
+    [10, 60],
+    [100, 3600]
+  ]
 }
