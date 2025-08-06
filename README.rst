@@ -9,6 +9,7 @@ Configuration
 =============
 
 The proxy uses a JSON configuration file (config.json) that contains:
+
 - Key for proxy authentication
 - Object of allowed target domains with their specific configurations
 - List of allowed origins for CORS (defaults to ["*"] if not specified)
@@ -18,38 +19,40 @@ The proxy uses a JSON configuration file (config.json) that contains:
 - rate_limit: global rate limits applied per client IP per domain (defaults to no limits)
 
 In addition, each domain in "allowed_domains" can have the following configuration:
+
 - sequential: if true, requests to this domain will be processed sequentially (useful for cookie rotation)
 - headers_override: domain-specific headers that override the global headers
 - rate_limit_override: domain-specific rate limits that override the global rate limits
 
-Example config.json:
-{
-  "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
-  "allowed_domains": {
-    "api.domain.com": {
-      "sequential": false,
-      "headers_override": {
-        "Accept": "application/json"
+Example config.json::
+
+    {
+      "key": "0b304a3743f3d4a679ec0f82b827fbf29539da96",
+      "allowed_domains": {
+        "api.domain.com": {
+          "sequential": false,
+          "headers_override": {
+            "Accept": "application/json"
+          },
+          "rate_limit_override": [
+            [5, 60],
+            [50, 3600]
+          ]
+        }
       },
-      "rate_limit_override": [
-        [5, 60],
-        [50, 3600]
+      "allowed_origins": [
+        "https://yourdomain.com"
+      ],
+      "port": 8080,
+      "bind_localhost_only": false,
+      "headers": {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0"
+      },
+      "rate_limit": [
+        [10, 60],
+        [100, 3600]
       ]
     }
-  },
-  "allowed_origins": [
-    "https://yourdomain.com"
-  ],
-  "port": 8080,
-  "bind_localhost_only": false,
-  "headers": {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0"
-  },
-  "rate_limit": [
-    [10, 60],
-    [100, 3600]
-  ]
-}
 
 Usage
 =====
@@ -85,6 +88,7 @@ For domains that require careful cookie management (such as rotating authenticat
 you can enable sequential processing by setting "sequential": true in the domain configuration.
 
 When sequential processing is enabled:
+
 - All requests to that domain are processed one at a time using a per-domain lock
 - This ensures cookie updates happen in the correct order 
 - Prevents race conditions when multiple concurrent requests would interfere with stateful authentication
@@ -111,16 +115,19 @@ The proxy supports per-IP per-domain rate limiting to prevent abuse and protect 
 Rate limits are defined as a list of [count, time_window_seconds] pairs.
 
 Global Rate Limiting:
+
 - Set in the "rate_limit" configuration
 - Applied to each client IP for each domain independently
 - Example: [[5, 60], [50, 3600]] means max 5 requests per minute AND max 50 requests per hour
 
 Domain-Specific Rate Limiting:
+
 - Set in "rate_limit_override" for individual domains
 - Overrides the global rate limits for that specific domain
 - Allows different limits for different APIs
 
 How it works:
+
 - Each client IP gets independent rate limits for each domain
 - A client can make 5 req/min to domain-a.com AND 5 req/min to domain-b.com
 - If two clients both access domain-a.com, they each get their own 5 req/min budget
@@ -133,19 +140,19 @@ Nginx configuration
 If you are running the proxy on the same server than a website, configuring nginx as a reverse proxy has
 multiple benefits:
 
-  * it allows to use the proxy on a standard port (80 or 443) that isn't blocked by external firewalls
-  * it allows a more explicit and simple usage with a URL prefix instead of a port number
-    (https://yourdomain.com/proxy/api.domain.com/some/path?key=your-key instead of http://yourdomain.com:8080/api.domain.com/some/path?key=your-key)
-  * it allows to use the proxy with https, and benefit from an existing https configuration
-  * it allows to benefit from the server's logging and monitoring (eg fail2ban)
-  * hiding the proxy behind a standard URL prefix makes it more difficult to guess than an open port,
-    reducing the risk of abuse from bots and scanners (for this to work, you need to set "bind_localhost_only": true in your config.json)
+- it allows to use the proxy on a standard port (80 or 443) that isn't blocked by external firewalls
+- it allows a more explicit and simple usage with a URL prefix instead of a port number
+  (https://yourdomain.com/proxy/api.domain.com/some/path?key=your-key instead of http://yourdomain.com:8080/api.domain.com/some/path?key=your-key)
+- it allows to use the proxy with https, and benefit from an existing https configuration
+- it allows to benefit from the server's logging and monitoring (eg fail2ban)
+- hiding the proxy behind a standard URL prefix makes it more difficult to guess than an open port,
+  reducing the risk of abuse from bots and scanners (for this to work, you need to set "bind_localhost_only": true in your config.json)
 
-You simply have use the following nginx configuration (inside the server block) :
+You simply have use the following nginx configuration (inside the server block)::
 
-location /proxy/ {
-        proxy_pass http://127.0.0.1:8080/;
-        proxy_set_header Host $host;
+    location /proxy/ {
+      proxy_pass http://127.0.0.1:8080/;
+      proxy_set_header Host $host;
     }
 
 (Replace 8080 with your configured port if different)
