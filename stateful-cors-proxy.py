@@ -351,6 +351,7 @@ class CORSProxyHandler(BaseHTTPRequestHandler):
 
         self.send_response(204)
         self.set_cors_headers()
+        self.send_header('Access-Control-Max-Age', '86400')  # Cache for 24 hours
         self.end_headers()
 
 if __name__ == '__main__':
